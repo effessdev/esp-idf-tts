@@ -1,21 +1,20 @@
-#include "audio_player.h"
+#include "esp_log.h"
+#include "espeak_voice.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
 
+const char *TAG = "MAIN";
+
 void app_main(void) {
-  // Initialize the player once at startup.
-  // Volume is a percentage (0-100); start conservatively low and raise
-  // it deliberately rather than defaulting to full volume.
-  audio_player_init(40);
+  esv_init(GPIO_NUM_25);
 
   while (1) {
-    printf("Playing audio now...\n");
+    ESP_LOGI(TAG, "Speaking Hello world...\n");
 
-    // This call blocks until the audio finishes playing completely
-    audio_player_play();
+    esv_speak("Hello world", 25);
 
-    printf("Audio finished. Waiting 1 second before playing again...\n");
+    ESP_LOGI(TAG, "Finished playing. Waiting for 1 second...\n");
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }

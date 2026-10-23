@@ -13,26 +13,17 @@ extern const uint8_t _binary_audio_pcm_end[];
 
 static dac_continuous_handle_t s_dac_handle = NULL;
 static bool s_is_initialized = false;
-static uint8_t s_volume_percent = 0;
 
 #define AUDIO_SAMPLE_RATE_HZ 20000
 #define AUDIO_VOLUME_MAX_PERCENT 100
 #define AUDIO_SCALE_CHUNK_BYTES 1024
 
-void audio_player_init(uint8_t volume_percent) {
+void audio_player_init(void) {
   if (s_is_initialized) {
     return;
   }
 
-  if (volume_percent > AUDIO_VOLUME_MAX_PERCENT) {
-    ESP_LOGW(TAG, "Requested volume %u%% exceeds max, clamping to %u%%",
-             volume_percent, AUDIO_VOLUME_MAX_PERCENT);
-    volume_percent = AUDIO_VOLUME_MAX_PERCENT;
-  }
-  s_volume_percent = volume_percent;
-
-  ESP_LOGI(TAG, "Initializing DAC Continuous Driver at %u%% volume...",
-           s_volume_percent);
+  ESP_LOGI(TAG, "Initializing DAC Continuous Driver...");
 
   dac_continuous_config_t dac_cfg = {
       .chan_mask = DAC_CHANNEL_MASK_CH0, // GPIO25 (DAC Channel 1)
@@ -50,16 +41,16 @@ void audio_player_init(uint8_t volume_percent) {
   s_is_initialized = true;
 }
 
-// Scales 8-bit unsigned PCM samples (centered on 128) by s_volume_percent.
+// Scales 8-bit unsigned PCM samples (centered on 128) by volume_percent.
 static void scale_samples_for_volume(const uint8_t *src, uint8_t *dst,
-                                     size_t len) {
+                                     size_t len, uint8_t volume_percent) {
   for (size_t i = 0; i < len; i++) {
     int centered = (int)src[i] - 128;
-    dst[i] = (uint8_t)(128 + (centered * s_volume_percent) / 100);
+    dst[i] = (uint8_t)(128 + (centered * volume_percent) / 100);
   }
 }
 
-void audio_player_play(void) {
+void audio_player_play(uint8_t volume_percent) {
   if (!s_is_initialized) {
     // No implicit fallback to a default volume: without an explicit
     // audio_player_init(volume_percent) call we don't know a safe level,
@@ -69,11 +60,17 @@ void audio_player_play(void) {
     return;
   }
 
+  if (volume_percent > AUDIO_VOLUME_MAX_PERCENT) {
+    ESP_LOGW(TAG, "Requested volume %u%% exceeds max, clamping to %u%%",
+             volume_percent, AUDIO_VOLUME_MAX_PERCENT);
+    volume_percent = AUDIO_VOLUME_MAX_PERCENT;
+  }
+
   // Calculate length using the symbols generated from audio.pcm
   const size_t audio_len = _binary_audio_pcm_end - _binary_audio_pcm_start;
 
   ESP_LOGI(TAG, "Starting audio playback (%d bytes) at %u%% volume...",
-           audio_len, s_volume_percent);
+           audio_len, volume_percent);
 
   // Scale and write in fixed-size chunks via a static buffer, rather than
   // heap-allocating a copy of the whole clip (which can fail/fragment the
@@ -87,7 +84,7 @@ void audio_player_play(void) {
     }
 
     scale_samples_for_volume(_binary_audio_pcm_start + offset, s_chunk_buf,
-                             chunk_len);
+                             chunk_len, volume_percent);
 
     size_t bytes_written = 0;
     ESP_ERROR_CHECK(dac_continuous_write(s_dac_handle, s_chunk_buf, chunk_len,
