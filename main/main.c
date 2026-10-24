@@ -13,8 +13,5 @@ void app_main(void) {
     ESP_LOGI(TAG, "Speaking Hello world...\n");
 
     esv_speak("Hello world", 25);
-
-    ESP_LOGI(TAG, "Finished playing. Waiting for 1 second...\n");
-    vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }

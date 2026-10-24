@@ -7,10 +7,6 @@
 
 static const char *TAG = "AUDIO_PLAYER";
 
-// Linker symbols generated for "audio.pcm" (dots become underscores)
-extern const uint8_t _binary_audio_pcm_start[];
-extern const uint8_t _binary_audio_pcm_end[];
-
 static dac_continuous_handle_t s_dac_handle = NULL;
 static bool s_is_initialized = false;
 
@@ -18,12 +14,15 @@ static bool s_is_initialized = false;
 #define AUDIO_VOLUME_MAX_PERCENT 100
 #define AUDIO_SCALE_CHUNK_BYTES 1024
 
-void audio_player_init(void) {
+void audio_player_init(gpio_num_t dac_pin) {
   if (s_is_initialized) {
     return;
   }
 
   ESP_LOGI(TAG, "Initializing DAC Continuous Driver...");
+
+  ESP_LOGW(TAG, "Setting DAC pin isn't currently supported, skipping and "
+                "defaulting to GPIO25");
 
   dac_continuous_config_t dac_cfg = {
       .chan_mask = DAC_CHANNEL_MASK_CH0, // GPIO25 (DAC Channel 1)
@@ -50,7 +49,8 @@ static void scale_samples_for_volume(const uint8_t *src, uint8_t *dst,
   }
 }
 
-void audio_player_play(uint8_t volume_percent) {
+void audio_player_play(const uint8_t *audio_data_start,
+                       const uint8_t *audio_data_end, uint8_t volume_percent) {
   if (!s_is_initialized) {
     // No implicit fallback to a default volume: without an explicit
     // audio_player_init(volume_percent) call we don't know a safe level,
@@ -67,7 +67,7 @@ void audio_player_play(uint8_t volume_percent) {
   }
 
   // Calculate length using the symbols generated from audio.pcm
-  const size_t audio_len = _binary_audio_pcm_end - _binary_audio_pcm_start;
+  const size_t audio_len = audio_data_end - audio_data_start;
 
   ESP_LOGI(TAG, "Starting audio playback (%d bytes) at %u%% volume...",
            audio_len, volume_percent);
@@ -83,8 +83,8 @@ void audio_player_play(uint8_t volume_percent) {
       chunk_len = AUDIO_SCALE_CHUNK_BYTES;
     }
 
-    scale_samples_for_volume(_binary_audio_pcm_start + offset, s_chunk_buf,
-                             chunk_len, volume_percent);
+    scale_samples_for_volume(audio_data_start + offset, s_chunk_buf, chunk_len,
+                             volume_percent);
 
     size_t bytes_written = 0;
     ESP_ERROR_CHECK(dac_continuous_write(s_dac_handle, s_chunk_buf, chunk_len,
